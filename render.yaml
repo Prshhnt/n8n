@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: n8n-service
+    plan: free
+    runtime: image
+    image:
+      url: docker.io/n8nio/n8n:latest
+    envVars:
+      - key: N8N_BASIC_AUTH_ACTIVE
+        value: "true"
+      - key: N8N_BASIC_AUTH_USER
+        fromEnvVar: N8N_AUTH_USER
+      - key: N8N_BASIC_AUTH_PASSWORD
+        fromEnvVar: N8N_AUTH_PASS
+      - key: N8N_HOST
+        value: n8n-service.onrender.com
+      - key: N8N_PORT
+        value: "$PORT"
+      - key: WEBHOOK_TUNNEL_URL
+        value: https://n8n-service.onrender.com
+      - key: GENERIC_TIMEZONE
+        value: Asia/Kolkata
