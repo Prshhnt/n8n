@@ -9,10 +9,10 @@ services:
       - key: N8N_BASIC_AUTH_ACTIVE
         value: "true"
       - key: N8N_HOST
-        value: n8n-service.onrender.com
+        value: n8n-service-5erk.onrender.com/
       - key: N8N_PORT
         value: "$PORT"
       - key: WEBHOOK_TUNNEL_URL
-        value: https://n8n-service.onrender.com
+        value: https://n8n-service-5erk.onrender.com/
       - key: GENERIC_TIMEZONE
         value: Asia/Kolkata
