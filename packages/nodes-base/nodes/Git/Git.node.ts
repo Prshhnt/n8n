@@ -5,7 +5,12 @@ import type {
 	INodeType,
 	INodeTypeDescription,
 } from 'n8n-workflow';
-import { NodeConnectionTypes, assertParamIsBoolean, assertParamIsString } from 'n8n-workflow';
+import {
+	NodeConnectionTypes,
+	NodeOperationError,
+	assertParamIsBoolean,
+	assertParamIsString,
+} from 'n8n-workflow';
 import type { LogOptions, SimpleGit, SimpleGitOptions } from 'simple-git';
 import simpleGit from 'simple-git';
 import { URL } from 'url';
@@ -13,6 +18,7 @@ import { URL } from 'url';
 import {
 	addConfigFields,
 	addFields,
+	ALLOWED_CONFIG_KEYS,
 	cloneFields,
 	commitFields,
 	logFields,
@@ -20,6 +26,8 @@ import {
 	switchBranchFields,
 	tagFields,
 } from './descriptions';
+import { Container } from '@n8n/di';
+import { DeploymentConfig, SecurityConfig } from '@n8n/config';
 
 export class Git implements INodeType {
 	description: INodeTypeDescription = {
@@ -27,7 +35,7 @@ export class Git implements INodeType {
 		name: 'git',
 		icon: 'file:git.svg',
 		group: ['transform'],
-		version: 1,
+		version: [1, 1.1],
 		description: 'Control git.',
 		defaults: {
 			name: 'Git',
@@ -280,19 +288,43 @@ export class Git implements INodeType {
 		for (let itemIndex = 0; itemIndex < items.length; itemIndex++) {
 			try {
 				const repositoryPath = this.getNodeParameter('repositoryPath', itemIndex, '') as string;
+				const resolvedRepositoryPath = await this.helpers.resolvePath(repositoryPath);
+				const isFilePathBlocked = this.helpers.isFilePathBlocked(resolvedRepositoryPath);
+				if (isFilePathBlocked) {
+					throw new NodeOperationError(
+						this.getNode(),
+						'Access to the repository path is not allowed',
+					);
+				}
+
 				const options = this.getNodeParameter('options', itemIndex, {});
 
 				if (operation === 'clone') {
 					// Create repository folder if it does not exist
 					try {
-						await access(repositoryPath);
+						await access(resolvedRepositoryPath);
 					} catch (error) {
-						await mkdir(repositoryPath);
+						await mkdir(resolvedRepositoryPath);
 					}
 				}
 
+				const gitConfig: string[] = [];
+				const deploymentConfig = Container.get(DeploymentConfig);
+				const isCloud = deploymentConfig.type === 'cloud';
+				const securityConfig = Container.get(SecurityConfig);
+				const disableBareRepos = securityConfig.disableBareRepos;
+				if (isCloud || disableBareRepos) {
+					gitConfig.push('safe.bareRepository=explicit');
+				}
+
+				const enableHooks = securityConfig.enableGitNodeHooks;
+				if (!enableHooks) {
+					gitConfig.push('core.hooksPath=/dev/null');
+				}
+
 				const gitOptions: Partial<SimpleGitOptions> = {
-					baseDir: repositoryPath,
+					baseDir: resolvedRepositoryPath,
+					config: gitConfig,
 				};
 
 				const git: SimpleGit = simpleGit(gitOptions)
@@ -325,7 +357,15 @@ export class Git implements INodeType {
 
 					const key = this.getNodeParameter('key', itemIndex, '') as string;
 					const value = this.getNodeParameter('value', itemIndex, '') as string;
+					const securityConfig = Container.get(SecurityConfig);
+					const enableGitNodeAllConfigKeys = securityConfig.enableGitNodeAllConfigKeys;
 					let append = false;
+					if (!enableGitNodeAllConfigKeys && !ALLOWED_CONFIG_KEYS.includes(key)) {
+						throw new NodeOperationError(
+							this.getNode(),
+							`The provided git config key '${key}' is not allowed`,
+						);
+					}
 
 					if (options.mode === 'append') {
 						append = true;
